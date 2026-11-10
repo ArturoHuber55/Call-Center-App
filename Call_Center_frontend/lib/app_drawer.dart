@@ -1,4 +1,8 @@
+import 'clientes_screen.dart';
+import 'estadisticas_screen.dart';
 import 'package:flutter/material.dart';
+import 'historial_screen.dart';
+import 'llamadas_screen.dart';
 import 'login_screen.dart';
 import 'panel_screen.dart';
 
@@ -22,6 +26,30 @@ class AppDrawer extends StatelessWidget {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const PanelScreen()),
+        );
+        break;
+      case 'Llamadas':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LlamadasScreen()),
+        );
+        break;
+      case 'Clientes':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ClientesScreen()),
+        );
+        break;
+      case 'Historial':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const HistorialScreen()),
+        );
+        break;
+      case 'Estadísticas':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const EstadisticasScreen()),
         );
         break;
       case 'Salir':

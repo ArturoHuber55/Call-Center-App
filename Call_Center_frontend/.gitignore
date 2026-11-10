@@ -46,3 +46,19 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+
+# Python / Flask related
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales (Virtual environments)
+venv/
+env/
+.venv/
+.env
+
+# Base de datos y credenciales
+*.sqlite3
+.flaskenv

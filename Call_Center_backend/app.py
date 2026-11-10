@@ -159,6 +159,282 @@ def guardar_llamada():
         if conn is not None and conn.is_connected():
             conn.close()
 
+@app.route('/programar_llamada', methods=['POST'])
+def programar_llamada():
+    data = request.get_json(silent=True) or {}
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO llamadas (id_agente, id_cliente, motivo, notas, estado_llamada, duracion_segundos) "
+            "VALUES (1, %s, %s, %s, 'Pendiente', 0)",
+            (data.get('id_cliente'), data.get('motivo'), data.get('notas'))
+        )
+        conn.commit()
+        return jsonify({"success": True, "message": "Llamada programada correctamente"}), 201
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/llamadas_pendientes', methods=['GET'])
+def llamadas_pendientes():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT llamadas.id_llamada, llamadas.id_cliente, clientes.nombre_completo, "
+            "clientes.telefono, clientes.correo_contacto, llamadas.motivo "
+            "FROM llamadas "
+            "JOIN clientes ON llamadas.id_cliente = clientes.id_cliente "
+            "WHERE llamadas.estado_llamada = 'Pendiente' "
+            "ORDER BY llamadas.id_llamada ASC"
+        )
+        return jsonify(cursor.fetchall()), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/historial_llamadas', methods=['GET'])
+def historial_llamadas():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT clientes.nombre_completo, clientes.correo_contacto, clientes.telefono, "
+            "llamadas.fecha_llamada, llamadas.duracion_segundos, llamadas.motivo, llamadas.estado_llamada, "
+            "GREATEST((SELECT COUNT(*) FROM llamadas l2 "
+            "WHERE l2.id_cliente = llamadas.id_cliente AND l2.estado_llamada != 'Pendiente') - 1, 0) "
+            "AS llamadas_anteriores "
+            "FROM llamadas "
+            "JOIN clientes ON llamadas.id_cliente = clientes.id_cliente "
+            "WHERE llamadas.estado_llamada != 'Pendiente' "
+            "ORDER BY llamadas.fecha_llamada DESC"
+        )
+        return jsonify(cursor.fetchall()), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/eliminar_llamada/<int:id_llamada>', methods=['DELETE'])
+def eliminar_llamada(id_llamada):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM llamadas WHERE id_llamada = %s AND estado_llamada = 'Pendiente'",
+            (id_llamada,)
+        )
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "message": "Llamada eliminada correctamente"
+        }), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/finalizar_llamada/<int:id_llamada>', methods=['PUT'])
+def finalizar_llamada(id_llamada):
+    data = request.get_json(silent=True) or {}
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE llamadas SET duracion_segundos = %s, estado_llamada = %s, notas = %s, motivo = %s "
+            "WHERE id_llamada = %s",
+            (data.get('duracion_segundos'), data.get('estado_llamada'),
+             data.get('notas'), data.get('motivo'), id_llamada)
+        )
+        conn.commit()
+        return jsonify({"success": True, "message": "Llamada finalizada correctamente"}), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/estadisticas', methods=['GET'])
+def estadisticas():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT COUNT(*) AS total FROM llamadas WHERE estado_llamada != 'Pendiente'")
+        total_llamadas = cursor.fetchone()['total']
+
+        cursor.execute("SELECT AVG(duracion_segundos) AS promedio FROM llamadas WHERE estado_llamada != 'Pendiente'")
+        promedio = cursor.fetchone()['promedio']
+        duracion_promedio = float(promedio) if promedio is not None else 0.0
+
+        cursor.execute("SELECT motivo, COUNT(*) AS total FROM llamadas WHERE estado_llamada != 'Pendiente' GROUP BY motivo")
+        por_motivo = cursor.fetchall()
+
+        cursor.execute("SELECT estado_llamada, COUNT(*) AS total FROM llamadas WHERE estado_llamada != 'Pendiente' GROUP BY estado_llamada")
+        por_estado = cursor.fetchall()
+
+        return jsonify({
+            "total_llamadas": total_llamadas,
+            "duracion_promedio_segundos": duracion_promedio,
+            "por_motivo": por_motivo,
+            "por_estado": por_estado
+        }), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/clientes', methods=['GET'])
+def obtener_clientes():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT clientes.id_cliente, clientes.nombre_completo, clientes.telefono, clientes.correo_contacto, "
+            "(SELECT COUNT(*) FROM llamadas l WHERE l.id_cliente = clientes.id_cliente "
+            "AND l.estado_llamada != 'Pendiente') AS llamadas_anteriores "
+            "FROM clientes"
+        )
+        clientes = cursor.fetchall()
+        return jsonify(clientes), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/crear_cliente', methods=['POST'])
+def crear_cliente():
+    data = request.get_json(silent=True) or {}
+    nombre_completo = data.get('nombre_completo')
+    telefono = data.get('telefono')
+    correo_contacto = data.get('correo_contacto')
+
+    if not nombre_completo or not telefono or not correo_contacto:
+        return jsonify({
+            "success": False,
+            "error": "Faltan datos obligatorios (nombre_completo, telefono, correo_contacto)"
+        }), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO clientes (nombre_completo, telefono, correo_contacto) VALUES (%s, %s, %s)",
+            (nombre_completo, telefono, correo_contacto)
+        )
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "message": "Cliente creado correctamente",
+            "id_cliente": cursor.lastrowid
+        }), 201
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/editar_cliente/<int:id_cliente>', methods=['PUT'])
+def editar_cliente(id_cliente):
+    data = request.get_json(silent=True) or {}
+    nombre_completo = data.get('nombre_completo')
+    telefono = data.get('telefono')
+    correo_contacto = data.get('correo_contacto')
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE clientes SET nombre_completo = %s, telefono = %s, correo_contacto = %s WHERE id_cliente = %s",
+            (nombre_completo, telefono, correo_contacto, id_cliente)
+        )
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "message": "Cliente actualizado correctamente"
+        }), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
+@app.route('/eliminar_cliente/<int:id_cliente>', methods=['DELETE'])
+def eliminar_cliente(id_cliente):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM clientes WHERE id_cliente = %s", (id_cliente,))
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "message": "Cliente eliminado correctamente"
+        }), 200
+    except Exception as e:
+        print(f'Error de MariaDB: {e}')
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None and conn.is_connected():
+            conn.close()
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
 

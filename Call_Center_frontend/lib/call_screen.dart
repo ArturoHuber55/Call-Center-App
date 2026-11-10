@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -5,7 +6,9 @@ import 'package:http/http.dart' as http;
 import 'app_drawer.dart';
 
 class CallScreen extends StatefulWidget {
-  const CallScreen({super.key});
+  const CallScreen({super.key, required this.llamada});
+
+  final Map<String, dynamic> llamada;
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -20,6 +23,14 @@ class _CallScreenState extends State<CallScreen> {
   String? _motivoSeleccionado;
   String? _estadoSeleccionado;
   late DateTime _horaInicio;
+  Timer? _timer;
+  int _segundos = 0;
+
+  String get _tiempoFormateado {
+    final m = (_segundos ~/ 60).toString().padLeft(2, '0');
+    final s = (_segundos % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
 
   static const List<String> _motivos = [
     'Soporte Técnico',
@@ -37,10 +48,14 @@ class _CallScreenState extends State<CallScreen> {
   void initState() {
     super.initState();
     _horaInicio = DateTime.now();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _segundos++);
+    });
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _notasController.dispose();
     super.dispose();
   }
@@ -48,19 +63,18 @@ class _CallScreenState extends State<CallScreen> {
   Future<void> _finalizarLlamada() async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    int duracion = DateTime.now().difference(_horaInicio).inSeconds;
+    int duracion = _segundos;
 
     try {
-      final response = await http.post(
-        Uri.parse('http://127.0.0.1:5000/guardar_llamada'),
+      final response = await http.put(
+        Uri.parse(
+            'http://127.0.0.1:5000/finalizar_llamada/${widget.llamada['id_llamada']}'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'id_agente': 1,
-          'id_cliente': 1,
           'duracion_segundos': duracion,
-          'motivo': _motivoSeleccionado,
           'estado_llamada': _estadoSeleccionado,
           'notas': _notasController.text,
+          'motivo': _motivoSeleccionado ?? widget.llamada['motivo'],
         }),
       );
 
@@ -173,8 +187,8 @@ class _CallScreenState extends State<CallScreen> {
                       size: 18,
                     ),
                     const SizedBox(width: 6),
-                    const Text(
-                      '3:45',
+                    Text(
+                      _tiempoFormateado,
                       style: TextStyle(color: _darkBlue, fontSize: 16),
                     ),
                     const SizedBox(width: 12),
@@ -202,29 +216,29 @@ class _CallScreenState extends State<CallScreen> {
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.account_circle,
                             color: _darkBlue,
                             size: 44,
                           ),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Juan Peréz',
-                                  style: TextStyle(
+                                  '${widget.llamada['nombre_completo'] ?? ''}',
+                                  style: const TextStyle(
                                     color: _darkBlue,
                                     fontSize: 24,
                                   ),
                                 ),
                                 Text(
-                                  'Soporte tecnico',
-                                  style: TextStyle(
+                                  '${widget.llamada['motivo'] ?? ''}',
+                                  style: const TextStyle(
                                     color: _darkBlue,
                                     fontSize: 16,
                                   ),
@@ -232,17 +246,18 @@ class _CallScreenState extends State<CallScreen> {
                               ],
                             ),
                           ),
-                          Icon(Icons.dialpad, color: _darkBlue),
+                          const Icon(Icons.dialpad, color: _darkBlue),
                         ],
                       ),
-                      SizedBox(height: 12),
-                      Text('Tel:', style: TextStyle(fontSize: 18)),
-                      Text('55-1234-5678', style: TextStyle(fontSize: 18)),
-                      SizedBox(height: 16),
-                      Text('Correo:', style: TextStyle(fontSize: 18)),
+                      const SizedBox(height: 12),
+                      const Text('Tel:', style: TextStyle(fontSize: 18)),
+                      Text('${widget.llamada['telefono'] ?? ''}',
+                          style: const TextStyle(fontSize: 18)),
+                      const SizedBox(height: 16),
+                      const Text('Correo:', style: TextStyle(fontSize: 18)),
                       Text(
-                        'juan-perez@hmail.com',
-                        style: TextStyle(fontSize: 18),
+                        '${widget.llamada['correo_contacto'] ?? 'Sin correo'}',
+                        style: const TextStyle(fontSize: 18),
                       ),
                     ],
                   ),
