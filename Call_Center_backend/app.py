@@ -1,3 +1,4 @@
+import pandas as pd
 import mysql.connector
 from mysql.connector import Error
 from flask import Flask, jsonify, request
@@ -82,6 +83,57 @@ def login():
         return jsonify({
             "status": "error",
             "message": "Error en el servidor al consultar la base de datos",
+            "error": str(e)
+        }), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if connection is not None and connection.is_connected():
+            connection.close()
+
+@app.route('/importar_clientes', methods=['POST'])
+def importar_clientes():
+    archivo = request.files.get('documento')
+    if archivo is None or archivo.filename == '':
+        return jsonify({
+            "status": "error",
+            "message": "No se envió ningún archivo en 'documento'"
+        }), 400
+
+    connection = None
+    cursor = None
+    try:
+        df = pd.read_excel(archivo)
+        df = df.iloc[:, :3]
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        query = "INSERT INTO clientes (nombre_completo, correo_contacto, telefono) VALUES (%s, %s, %s)"
+
+        importados = 0
+        for _, fila in df.iterrows():
+            if fila.isnull().all():
+                continue
+            valores = []
+            for v in fila:
+                valores.append(None if pd.isna(v) else str(v).strip())
+            if not any(valores):
+                continue
+            cursor.execute(query, tuple(valores))
+            importados += 1
+
+        connection.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"{importados} clientes importados correctamente",
+            "importados": importados
+        }), 200
+    except Exception as e:
+        if connection is not None and connection.is_connected():
+            connection.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "Error al importar clientes",
             "error": str(e)
         }), 500
     finally:

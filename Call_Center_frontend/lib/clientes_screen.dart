@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -58,6 +60,86 @@ class _ClientesScreenState extends State<ClientesScreen> {
         _error = 'Error de conexión: $e';
         _cargando = false;
       });
+    }
+  }
+
+  Future<void> _importarExcel() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context, rootNavigator: true);
+
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx', 'xls'],
+    );
+    if (result.isEmpty) return;
+    final archivo = result.first;
+    Uint8List? bytes;
+    try {
+      bytes = await archivo.readAsBytes();
+    } catch (_) {
+      bytes = null;
+    }
+    if (bytes == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text('No se pudo leer el archivo seleccionado'),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator(color: Colors.white)),
+      ),
+    );
+
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_baseUrl/importar_clientes'),
+      )..files.add(http.MultipartFile.fromBytes(
+          'documento',
+          bytes,
+          filename: archivo.name,
+        ));
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      navigator.pop();
+
+      if (response.statusCode == 200) {
+        String mensaje = 'Clientes importados correctamente';
+        try {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          if (data is Map && data['message'] != null) {
+            mensaje = data['message'].toString();
+          }
+        } catch (_) {}
+        messenger.showSnackBar(
+          SnackBar(backgroundColor: Colors.green, content: Text(mensaje)),
+        );
+        if (mounted) _cargarClientes();
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text('Error ${response.statusCode}: ${response.body}'),
+          ),
+        );
+      }
+    } catch (e) {
+      navigator.pop();
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red,
+          content: Text('Error de conexión: $e'),
+        ),
+      );
     }
   }
 
@@ -366,6 +448,23 @@ class _ClientesScreenState extends State<ClientesScreen> {
             fontWeight: FontWeight.w500,
           ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: ElevatedButton.icon(
+              onPressed: _importarExcel,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Importar Excel'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E367E),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
